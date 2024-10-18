@@ -22,7 +22,7 @@ pub const BIDS: Map<u64, Bid> = Map::new("bids");
 // #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default, Debug)]
 // pub struct BidId(pub Uint64);
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum AuctionStatus {
     Active,
@@ -31,7 +31,7 @@ pub enum AuctionStatus {
     Completed,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct Auction {
     pub name: String,
     pub available_bid_items: Uint64,
@@ -45,7 +45,7 @@ pub struct BidItem {
     pub name: String,
     pub total_bids: Uint64,
     pub total_coins: Decimal256,
-    pub winner: Addr,
+    pub winner: Option<Addr>,
     pub auction_id: u64,
 }
 

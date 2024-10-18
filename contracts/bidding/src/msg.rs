@@ -1,6 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Timestamp};
-use schemars::Set;
+use crate::state::Auction;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -13,7 +13,7 @@ pub enum ExecuteMsg {
     // Donate {},
     CreateAuction{
         name: String,
-        bid_items: Set<String>,
+        bid_items: Vec<String>,
     },
 }
 
@@ -23,22 +23,12 @@ pub struct AdminsListResp {
 }
 
 #[cw_serde]
-pub struct AdminResp {
-    pub admin: Addr,
-}
-
-#[cw_serde]
-pub struct JoinTimeResp {
-    pub joined: Timestamp,
-}
-
-#[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    #[returns(AdminsListResp)]
-    AdminsList {},
-    #[returns(JoinTimeResp)]
-    JoinTime { admin: String },
-    #[returns(AdminResp)]
+    #[returns(Addr)]
     Admin {},
+    #[returns(Auction)]
+    Auction {
+        id: u64
+    },
 }

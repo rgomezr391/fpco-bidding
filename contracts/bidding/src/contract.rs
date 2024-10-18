@@ -1,5 +1,5 @@
 use crate::error::ContractError;
-use crate::msg::{AdminsListResp, ExecuteMsg, InstantiateMsg, JoinTimeResp, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{ADMINS, ADMIN, AUCTIONS};
 use cosmwasm_std::{
     coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response,
@@ -7,6 +7,8 @@ use cosmwasm_std::{
 };
 use schemars::Set;
 use rand::Rng;
+
+pub type Result<T> = std::result::Result<T, ContractError>;
 
 pub fn instantiate(
     deps: DepsMut,
@@ -20,13 +22,17 @@ pub fn instantiate(
     Ok(Response::new())
 }
 
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary> {
     use QueryMsg::*;
 
     match msg {
-        AdminsList {} => to_json_binary(&query::admins_list(deps)?),
-        JoinTime { admin } => to_json_binary(&query::join_time(deps, admin)?),
-        Admin {} => to_json_binary(&query::admin(deps)?)
+        Admin {} => Ok(to_json_binary(&query::admin(deps)?)?),
+        Auction {
+            id
+        } => {
+            let response = query::get_auction(deps, id)?;
+            Ok(to_json_binary(&response)?)
+        },
     }
 }
 
@@ -35,7 +41,7 @@ pub fn execute(
     _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     use ExecuteMsg::*;
 
     match msg {
@@ -53,7 +59,7 @@ mod exec {
 
     use cosmwasm_std::{Decimal256, Uint64};
 
-    use crate::state::{Auction, AuctionStatus};
+    use crate::state::{Auction, AuctionStatus, BidItem, BID_ITEMS};
 
     use super::*;
 
@@ -92,7 +98,7 @@ mod exec {
     //     Ok(resp)
     // }
 
-    pub fn create_auction(deps: DepsMut, info: MessageInfo, name: String, bid_items: Set<String>) -> Result<Response, ContractError> {
+    pub fn create_auction(deps: DepsMut, info: MessageInfo, name: String, bid_items: Vec<String>) -> Result<Response> {
         let curr_admin = ADMIN.load(deps.storage)?;
 
         if curr_admin != &info.sender {
@@ -100,60 +106,73 @@ mod exec {
         }
 
         let auction = Auction {
-            name,
+            name: name,
             total_bids: Uint64::from(0 as u64),
             total_coins: Decimal256::from_str("0").unwrap(),
-            available_bid_items: Uint64::from(0 as u64),
+            available_bid_items: Uint64::from(bid_items.len() as u64),
             current_state: AuctionStatus::Active,
         };
 
         let mut rng = rand::thread_rng();
-        let random_id: u64 = rng.gen::<u64>();
+        let auction_generated_id: u64 = rng.gen::<u64>();
 
-        AUCTIONS.save(deps.storage, random_id, &auction);
+        AUCTIONS.save(deps.storage, auction_generated_id, &auction)?;
+
+        for bid_item in bid_items {
+            let item = BidItem {
+                name: bid_item,
+                total_bids: Uint64::from(0 as u64),
+                total_coins: Decimal256::from_str("0").unwrap(),
+                winner: None,
+                auction_id: auction_generated_id,
+            };
+
+            let bid_item_generated_id: u64 = rng.gen::<u64>();
+
+            BID_ITEMS.save(deps.storage, bid_item_generated_id, &item)?;
+        }
 
         let resp = Response::new()
-            .add_attribute("action", "create_auction");
+            .add_attribute("action", "create_auction")
+            .add_attribute("auction_id", auction_generated_id.to_string());
 
         Ok(resp)
     }
 }
 
 mod query {
-    use crate::msg::AdminResp;
+    // use cw_multi_test::Contract;
+
+    // use crate::msg::{AdminResp, AuctionResp};
+
+    use crate::state::Auction;
 
     use super::*;
 
-    pub fn admins_list(deps: Deps) -> StdResult<AdminsListResp> {
-        let admins: Result<Vec<_>, _> = ADMINS
-            .keys(deps.storage, None, None, Order::Ascending)
-            .collect();
-        let admins = admins?;
-        let resp = AdminsListResp { admins };
-        Ok(resp)
-    }
-
-    pub fn join_time(deps: Deps, admin: String) -> StdResult<JoinTimeResp> {
-        ADMINS
-            .load(deps.storage, &Addr::unchecked(admin))
-            .map(|joined| JoinTimeResp { joined })
-    }
-
-    pub fn admin(deps: Deps) -> StdResult<AdminResp> {
-        println!("HERE");
+    pub fn admin(deps: Deps) -> Result<Addr> {
         let admin = ADMIN.load(deps.storage)?;
-        let resp = AdminResp { admin };
-        Ok(resp)
+        Ok(admin)
+        // let resp = AdminResp { admin };
+        // Ok(resp)
+    }
+
+    pub fn get_auction(deps: Deps, id: u64) -> Result<Auction> {
+        let auction = AUCTIONS
+            .may_load(deps.storage, id)?
+            .ok_or(ContractError::InvalidId)?;
+        Ok(auction)
+        // let resp = AuctionResp { auction };
+        // Ok(resp)
     }
 
 }
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::Addr;
+    use cosmwasm_std::{Addr, StdError};
     use cw_multi_test::{App, ContractWrapper, Executor};
 
-    use crate::msg::{AdminResp, AdminsListResp};
+    use crate::state::Auction;
 
     use super::*;
 
@@ -166,7 +185,7 @@ mod tests {
 
         let sender_address =  Addr::unchecked("owner");
         //let sender_address_str = sender_address.to_string();
-        
+
         let addr = app
             .instantiate_contract(
                 code_id,
@@ -180,12 +199,64 @@ mod tests {
             )
             .unwrap();
 
-        let resp: AdminResp = app
+        let resp: Addr = app
             .wrap()
             .query_wasm_smart(addr, &QueryMsg::Admin {})
             .unwrap();
 
-        assert_eq!(resp, AdminResp { admin: sender_address });
+        assert_eq!(resp, sender_address );
+    }
+
+    #[test]
+    fn create_auction() {
+        let mut app = App::default();
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+
+        let sender_address =  Addr::unchecked("owner");
+        //let sender_address_str = sender_address.to_string();
+
+        let addr = app
+            .instantiate_contract(
+                code_id,
+                sender_address.clone(),
+                &InstantiateMsg {
+                    admin: sender_address.clone(),
+                },
+                &[],
+                "Contract",
+                None,
+            )
+            .unwrap();
+
+        let bid_items= vec![ "My first bid item".to_string(), "My second bid item".to_string() ];
+
+        let resp = app.execute_contract(
+            Addr::unchecked("owner"),
+            addr.clone(),
+            &ExecuteMsg::CreateAuction { name: "TestAuction #1".to_string(), bid_items: bid_items },
+            &[],
+        )
+        .unwrap();
+
+        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
+
+        let auction_id = &wasm.attributes
+                .iter()
+                .find(|attr| attr.key == "auction_id")
+                .unwrap()
+                .value;
+
+        // TODO - avoid using unwrap since this can fail
+        let auction_id_u64 = auction_id.parse::<u64>().unwrap();
+
+        let resp: Auction = app
+            .wrap()
+            .query_wasm_smart(addr, &QueryMsg::Auction { id: auction_id_u64 })
+            .unwrap();
+
+        assert_eq!(resp.name, "TestAuction #1");
     }
 
     // #[test]
