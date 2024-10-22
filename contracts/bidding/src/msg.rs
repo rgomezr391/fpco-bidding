@@ -52,4 +52,12 @@ pub enum QueryMsg {
     BidItem {
         id: u64
     },
+    #[returns(Vec<(u64, BidItem)>)]
+    BidItems {
+        start_after: Option<u64>,
+    },
+    #[returns(Vec<(u64, Auction)>)]
+    Auctions {
+        start_after: Option<u64>,
+    },
 }

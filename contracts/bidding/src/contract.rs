@@ -11,6 +11,7 @@ pub type Result<T> = std::result::Result<T, ContractError>;
 
 const CRANK_MAX_BID_ITEMS: u32 = 3;
 const DENOM: &'static str = "eth";
+const LIMIT: u32 = 10;
 
 pub fn instantiate(
     deps: DepsMut,
@@ -47,6 +48,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary> {
             id
         } => {
             let response = query::get_bid_item_by_id(deps, id)?;
+            Ok(to_json_binary(&response)?)
+        },
+        BidItems {
+            start_after,
+        } => {
+            let response = query::get_bid_items(deps, start_after, LIMIT)?;
+            Ok(to_json_binary(&response)?)
+        },
+        Auctions {
+            start_after,
+        } => {
+            let response = query::get_auctions(deps, start_after, LIMIT)?;
             Ok(to_json_binary(&response)?)
         },
     }
@@ -425,6 +438,8 @@ mod exec {
 
 mod query {
 
+    use cw_storage_plus::Bound;
+
     use crate::state::{Auction, BidItem, BID_ITEMS};
 
     use super::*;
@@ -444,6 +459,40 @@ mod query {
         Ok(BID_ITEMS
             .may_load(deps.storage, id)?
             .ok_or(ContractError::InvalidBidItemId)?)
+    }
+
+    pub fn get_bid_items(deps: Deps, start_after: Option<u64>, limit: u32) -> Result<Vec<(u64, BidItem)>> {
+        let start = Bound::inclusive(start_after.unwrap());
+        let limit = limit as usize;
+
+        let iter = BID_ITEMS.range(deps.storage, Some(start), None, Order::Ascending)
+            .take(limit);
+
+        let result: Vec<(u64, BidItem)> = iter
+            .map(|item| {
+                let (key, value) = item?;
+                Ok((key, value))
+            })
+            .collect::<StdResult<_>>()?;
+
+        Ok(result)
+    }
+
+    pub fn get_auctions(deps: Deps, start_after: Option<u64>, limit: u32) -> Result<Vec<(u64, Auction)>> {
+        let start = Bound::inclusive(start_after.unwrap_or(0));
+        let limit = limit as usize;
+
+        let iter = AUCTIONS.range(deps.storage, Some(start), None, Order::Ascending)
+            .take(limit);
+
+        let result: Vec<(u64, Auction)> = iter
+            .map(|item| {
+                let (key, value) = item?;
+                Ok((key, value))
+            })
+            .collect::<StdResult<_>>()?;
+
+        Ok(result)
     }
 
     pub fn get_bid_items_by_auction_id(deps: Deps, auction_id: u64) -> Result<Vec<(u64, BidItem)>> {
@@ -807,5 +856,73 @@ mod tests {
         )
         .unwrap();
 
+    }
+
+    #[test]
+    fn get_auctions() {
+        let mut app = App::default();
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+
+        let sender_address =  Addr::unchecked("owner");
+
+        let addr = app
+            .instantiate_contract(
+                code_id,
+                sender_address.clone(),
+                &InstantiateMsg {
+                    admin: sender_address.clone(),
+                },
+                &[],
+                "Contract",
+                None,
+            )
+            .unwrap();
+
+        let total_auctions = 15;
+        let mut auction_ids: Vec<u64> = vec![];
+
+        for num in 0..total_auctions { // change it to get range
+            let bid_items= vec![ "My first bid item".to_string(), "My second bid item".to_string() ];
+
+            let auction_name = match num {
+                n => format!("TestAuction #{n}"),
+            };
+
+            let resp = app.execute_contract(
+                Addr::unchecked("owner"),
+                addr.clone(),
+                &ExecuteMsg::CreateAuction { name: auction_name, bid_items: bid_items },
+                &[],
+            )
+            .unwrap();
+
+            let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
+
+            let auction_id = &wasm.attributes
+                    .iter()
+                    .find(|attr| attr.key == "auction_id")
+                    .unwrap()
+                    .value;
+
+            // TODO - avoid using unwrap since this can fail
+            let auction_id_u64 = auction_id.parse::<u64>().unwrap();
+            auction_ids.push(auction_id_u64);
+        }
+
+        let resp: Vec<(u64, Auction)> = app
+            .wrap()
+            .query_wasm_smart(&addr, &QueryMsg::Auctions { start_after: None } )
+            .unwrap();
+
+        assert_eq!(resp.len(), 10);
+
+        let resp: Vec<(u64, Auction)> = app
+            .wrap()
+            .query_wasm_smart(&addr, &QueryMsg::Auctions { start_after: Some(resp[8].0) } )
+            .unwrap();
+
+        assert_eq!(resp.len(), 7);
     }
 }
