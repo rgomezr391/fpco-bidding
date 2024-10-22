@@ -9,6 +9,12 @@ pub enum ContractError {
     Unauthorized { sender: Addr },
     #[error("Payment error: {0}")]
     Payment(#[from] PaymentError),
-    #[error("The provided id doesn't exist.")]
-    InvalidId,
+    #[error("The provided auction id doesn't exist.")]
+    InvalidAuctionId,
+    #[error("The provided bid item id doesn't exist.")]
+    InvalidBidItemId,
+    #[error("The auction is in a non-updateable state.")]
+    AuctionNonUpdateable,
+    #[error("The auction is already completed and can't accept bids.")]
+    AuctionCompleted,
 }
