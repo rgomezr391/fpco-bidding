@@ -48,4 +48,8 @@ pub enum QueryMsg {
     BidItemsByAuctionId {
         auction_id: u64
     },
+    #[returns(BidItem)]
+    BidItem {
+        id: u64
+    },
 }

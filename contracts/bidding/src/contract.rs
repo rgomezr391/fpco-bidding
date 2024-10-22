@@ -42,7 +42,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary> {
         } => {
             let response = query::get_bid_items_by_auction_id(deps, auction_id)?;
             Ok(to_json_binary(&response)?)
-        }
+        },
+        BidItem {
+            id
+        } => {
+            let response = query::get_bid_item_by_id(deps, id)?;
+            Ok(to_json_binary(&response)?)
+        },
     }
 }
 
@@ -55,8 +61,6 @@ pub fn execute(
     use ExecuteMsg::*;
 
     match msg {
-        // Leave {} => exec::leave(deps, info).map_err(Into::into),
-        // Donate {} => exec::donate(deps, info),
         CreateAuction {
             name,
             bid_items,
@@ -428,15 +432,18 @@ mod query {
     pub fn admin(deps: Deps) -> Result<Addr> {
         let admin = ADMIN.load(deps.storage)?;
         Ok(admin)
-        // let resp = AdminResp { admin };
-        // Ok(resp)
     }
 
     pub fn get_auction(deps: Deps, id: u64) -> Result<Auction> {
-        let auction = AUCTIONS
+        Ok(AUCTIONS
             .may_load(deps.storage, id)?
-            .ok_or(ContractError::InvalidAuctionId)?;
-        Ok(auction)
+            .ok_or(ContractError::InvalidAuctionId)?)
+    }
+
+    pub fn get_bid_item_by_id(deps: Deps, id: u64) -> Result<BidItem> {
+        Ok(BID_ITEMS
+            .may_load(deps.storage, id)?
+            .ok_or(ContractError::InvalidBidItemId)?)
     }
 
     pub fn get_bid_items_by_auction_id(deps: Deps, auction_id: u64) -> Result<Vec<(u64, BidItem)>> {
@@ -458,7 +465,7 @@ mod query {
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{Addr, StdError};
+    use cosmwasm_std::Addr;
     use cw_multi_test::{App, ContractWrapper, Executor};
 
     use crate::state::{Auction, AuctionStatus, BidItem};
@@ -667,7 +674,7 @@ mod tests {
             "TA1 7th bid item".to_string(),
         ];
 
-        let resp = app.execute_contract(
+        app.execute_contract(
             Addr::unchecked("owner"),
             addr.clone(),
             &ExecuteMsg::AddBidItems { auction_id: auction_id_u64_first, bid_items: bid_items },
