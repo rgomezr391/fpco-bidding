@@ -1,11 +1,12 @@
 use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
-use error::ContractError;
 use msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::contract::Result;
 
 pub mod contract;
 pub mod error;
 pub mod msg;
 pub mod state;
+pub mod tests;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -23,11 +24,11 @@ pub fn execute(
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response> {
     contract::execute(deps, env, info, msg)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary> {
     contract::query(deps, env, msg)
 }
