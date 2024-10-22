@@ -36,6 +36,14 @@ pub struct AdminsListResp {
 }
 
 #[cw_serde]
+pub struct BidItemsByIdResp {
+    pub bid_item_id: u64,
+    pub data: BidItem,
+    pub auction_id: u64,
+    pub bid_state: AuctionStatus,
+}
+
+#[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(Addr)]
@@ -60,4 +68,8 @@ pub enum QueryMsg {
     Auctions {
         start_after: Option<u64>,
     },
+    #[returns(Vec<BidItemsByIdResp>)]
+    BidItemsById {
+        bid_items_ids: Vec<u64>,
+    }
 }

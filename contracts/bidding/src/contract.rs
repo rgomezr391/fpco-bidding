@@ -62,6 +62,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary> {
             let response = query::get_auctions(deps, start_after, LIMIT)?;
             Ok(to_json_binary(&response)?)
         },
+        BidItemsById { 
+            bid_items_ids
+        } => {
+            let response = query::get_bid_items_by_id(deps, bid_items_ids)?;
+            Ok(to_json_binary(&response)?)
+        },
     }
 }
 
@@ -440,7 +446,7 @@ mod query {
 
     use cw_storage_plus::Bound;
 
-    use crate::state::{Auction, BidItem, BID_ITEMS};
+    use crate::{msg::BidItemsByIdResp, state::{Auction, BidItem, BID_ITEMS}};
 
     use super::*;
 
@@ -462,7 +468,7 @@ mod query {
     }
 
     pub fn get_bid_items(deps: Deps, start_after: Option<u64>, limit: u32) -> Result<Vec<(u64, BidItem)>> {
-        let start = Bound::inclusive(start_after.unwrap());
+        let start = Bound::inclusive(start_after.unwrap_or(0));
         let limit = limit as usize;
 
         let iter = BID_ITEMS.range(deps.storage, Some(start), None, Order::Ascending)
@@ -510,419 +516,27 @@ mod query {
         Ok(result)
     }
 
-}
-
-#[cfg(test)]
-mod tests {
-    use cosmwasm_std::Addr;
-    use cw_multi_test::{App, ContractWrapper, Executor};
-
-    use crate::state::{Auction, AuctionStatus, BidItem};
-
-    use super::*;
-
-    #[test]
-    fn instantiation() {
-        let mut app = App::default();
-
-        let code = ContractWrapper::new(execute, instantiate, query);
-        let code_id = app.store_code(Box::new(code));
-
-        let sender_address =  Addr::unchecked("owner");
-        //let sender_address_str = sender_address.to_string();
-
-        let addr = app
-            .instantiate_contract(
-                code_id,
-                sender_address.clone(),
-                &InstantiateMsg {
-                    admin: sender_address.clone(),
-                },
-                &[],
-                "Contract",
-                None,
-            )
-            .unwrap();
-
-        let resp: Addr = app
-            .wrap()
-            .query_wasm_smart(addr, &QueryMsg::Admin {})
-            .unwrap();
-
-        assert_eq!(resp, sender_address );
-    }
-
-    #[test]
-    fn create_auction() {
-        let mut app = App::default();
-
-        let code = ContractWrapper::new(execute, instantiate, query);
-        let code_id = app.store_code(Box::new(code));
-
-        let sender_address =  Addr::unchecked("owner");
-        //let sender_address_str = sender_address.to_string();
-
-        let addr = app
-            .instantiate_contract(
-                code_id,
-                sender_address.clone(),
-                &InstantiateMsg {
-                    admin: sender_address.clone(),
-                },
-                &[],
-                "Contract",
-                None,
-            )
-            .unwrap();
-
-        let bid_items= vec![ "My first bid item".to_string(), "My second bid item".to_string() ];
-
-        let resp = app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::CreateAuction { name: "TestAuction #1".to_string(), bid_items: bid_items },
-            &[],
-        )
-        .unwrap();
-
-        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
-
-        let auction_id = &wasm.attributes
-                .iter()
-                .find(|attr| attr.key == "auction_id")
-                .unwrap()
-                .value;
-
-        // TODO - avoid using unwrap since this can fail
-        let auction_id_u64 = auction_id.parse::<u64>().unwrap();
-
-        let resp: Auction = app
-            .wrap()
-            .query_wasm_smart(addr, &QueryMsg::Auction { id: auction_id_u64 })
-            .unwrap();
-
-        assert_eq!(resp.name, "TestAuction #1");
-    }
-
-    #[test]
-    fn set_auction_state() {
-        let mut app = App::default();
-
-        let code = ContractWrapper::new(execute, instantiate, query);
-        let code_id = app.store_code(Box::new(code));
-
-        let sender_address =  Addr::unchecked("owner");
-        //let sender_address_str = sender_address.to_string();
-
-        let addr = app
-            .instantiate_contract(
-                code_id,
-                sender_address.clone(),
-                &InstantiateMsg {
-                    admin: sender_address.clone(),
-                },
-                &[],
-                "Contract",
-                None,
-            )
-            .unwrap();
-
-        let bid_items= vec![ "My first bid item".to_string(), "My second bid item".to_string() ];
-
-        let resp = app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::CreateAuction { name: "TestAuction #1".to_string(), bid_items: bid_items },
-            &[],
-        )
-        .unwrap();
-
-        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
-
-        let auction_id = &wasm.attributes
-                .iter()
-                .find(|attr| attr.key == "auction_id")
-                .unwrap()
-                .value;
-
-        // TODO - avoid using unwrap since this can fail
-        let auction_id_u64 = auction_id.parse::<u64>().unwrap();
-
-        let resp = app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::SetAuctionState { id: auction_id_u64, status: AuctionStatus::PendingCompletion },
-            &[],
-        )
-        .unwrap();
-
-        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
-
-        let auctions_crank_queue_count = &wasm.attributes
-            .iter()
-            .find(|attr| attr.key == "auctions_crank_queue_count")
-            .unwrap()
-            .value;
-        
-
-        assert_eq!(auctions_crank_queue_count, "1");
-    }
-
-    #[test]
-    fn advance_crank() {
-        let mut app = App::default();
-
-        let code = ContractWrapper::new(execute, instantiate, query);
-        let code_id = app.store_code(Box::new(code));
-
-        let sender_address =  Addr::unchecked("owner");
-        //let sender_address_str = sender_address.to_string();
-
-        let addr = app
-            .instantiate_contract(
-                code_id,
-                sender_address.clone(),
-                &InstantiateMsg {
-                    admin: sender_address.clone(),
-                },
-                &[],
-                "Contract",
-                None,
-            )
-            .unwrap();
-
-        let bid_items= vec![ 
-            "TA1 1st bid item".to_string(),
-            "TA1 2nd bid item".to_string(),
-            "TA1 3rd bid item".to_string(),
-            "TA1 4th bid item".to_string(),
-            "TA1 5th bid item".to_string(),
-        ];
-
-        let resp = app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::CreateAuction { name: "TestAuction #1".to_string(), bid_items: bid_items },
-            &[],
-        )
-        .unwrap();
-
-        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
-
-        let auction_id = &wasm.attributes
-                .iter()
-                .find(|attr| attr.key == "auction_id")
-                .unwrap()
-                .value;
-
-        // TODO - avoid using unwrap since this can fail
-        let auction_id_u64_first = auction_id.parse::<u64>().unwrap();
-
-        let bid_items= vec![ 
-            "TA1 6th bid item".to_string(),
-            "TA1 7th bid item".to_string(),
-        ];
-
-        app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::AddBidItems { auction_id: auction_id_u64_first, bid_items: bid_items },
-            &[],
-        )
-        .unwrap();
-
-        let resp: Vec<(u64, BidItem)> = app
-            .wrap()
-            .query_wasm_smart(&addr, &QueryMsg::BidItemsByAuctionId { auction_id: auction_id_u64_first })
-            .unwrap();
-
-        for bid_item in resp {
-            if bid_item.1.name == "TA1 2nd bid item" {
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 4 },
-                    &[],
-                )
-                .unwrap();
-
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 1 },
-                    &[],
-                )
-                .unwrap();
-            } 
-            else if bid_item.1.name == "TA1 4th bid item" {
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 8 },
-                    &[],
-                )
-                .unwrap();
-
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 10 },
-                    &[],
-                )
-                .unwrap();
-
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 16 },
-                    &[],
-                )
-                .unwrap();
-            }
-            else if bid_item.1.name == "TA1 6th bid item" {
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 36 },
-                    &[],
-                )
-                .unwrap();
-
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 35 },
-                    &[],
-                )
-                .unwrap();
-
-                app.execute_contract(
-                    Addr::unchecked("user"),
-                    addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 5 },
-                    &[],
-                )
-                .unwrap();
-            };
-        }
-        
-        let resp = app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::SetAuctionState { id: auction_id_u64_first, status: AuctionStatus::PendingCompletion },
-            &[],
-        )
-        .unwrap();
-
-        let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
-
-        let auctions_crank_queue_count = &wasm.attributes
-            .iter()
-            .find(|attr| attr.key == "auctions_crank_queue_count")
-            .unwrap()
-            .value;
-
-        assert_eq!(auctions_crank_queue_count, "1");
-
-        app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::AdvanceCrank {  },
-            &[],
-        )
-        .unwrap();
-
-       app.execute_contract(
-            Addr::unchecked("user"),
-            addr.clone(),
-            &ExecuteMsg::AdvanceCrank {  },
-            &[],
-        )
-        .unwrap();
-
-        app.execute_contract(
-            Addr::unchecked("owner"),
-            addr.clone(),
-            &ExecuteMsg::AdvanceCrank {  },
-            &[],
-        )
-        .unwrap();
-
-        app.execute_contract(
-            Addr::unchecked("user"),
-            addr.clone(),
-            &ExecuteMsg::AdvanceCrank {  },
-            &[],
-        )
-        .unwrap();
-
-    }
-
-    #[test]
-    fn get_auctions() {
-        let mut app = App::default();
-
-        let code = ContractWrapper::new(execute, instantiate, query);
-        let code_id = app.store_code(Box::new(code));
-
-        let sender_address =  Addr::unchecked("owner");
-
-        let addr = app
-            .instantiate_contract(
-                code_id,
-                sender_address.clone(),
-                &InstantiateMsg {
-                    admin: sender_address.clone(),
-                },
-                &[],
-                "Contract",
-                None,
-            )
-            .unwrap();
-
-        let total_auctions = 15;
-        let mut auction_ids: Vec<u64> = vec![];
-
-        for num in 0..total_auctions { // change it to get range
-            let bid_items= vec![ "My first bid item".to_string(), "My second bid item".to_string() ];
-
-            let auction_name = match num {
-                n => format!("TestAuction #{n}"),
+    pub fn get_bid_items_by_id(deps: Deps, bid_items_ids: Vec<u64>) -> Result<Vec<BidItemsByIdResp>> {
+        let mut result: Vec<BidItemsByIdResp> = vec![];
+
+        for bid_item_id in bid_items_ids {
+            let bid_item = BID_ITEMS
+                .may_load(deps.storage, bid_item_id)?
+                .ok_or(ContractError::InvalidBidItemId)?;
+
+            let auction = get_auction(deps, bid_item.auction_id)?;
+
+            let bid_items_by_id_resp  = BidItemsByIdResp {
+                bid_item_id: bid_item_id,
+                auction_id: bid_item.auction_id,
+                bid_state: auction.current_state,
+                data: bid_item,
             };
 
-            let resp = app.execute_contract(
-                Addr::unchecked("owner"),
-                addr.clone(),
-                &ExecuteMsg::CreateAuction { name: auction_name, bid_items: bid_items },
-                &[],
-            )
-            .unwrap();
-
-            let wasm = resp.events.iter().find(|ev| ev.ty == "wasm").unwrap();
-
-            let auction_id = &wasm.attributes
-                    .iter()
-                    .find(|attr| attr.key == "auction_id")
-                    .unwrap()
-                    .value;
-
-            // TODO - avoid using unwrap since this can fail
-            let auction_id_u64 = auction_id.parse::<u64>().unwrap();
-            auction_ids.push(auction_id_u64);
+            result.push(bid_items_by_id_resp);
         }
 
-        let resp: Vec<(u64, Auction)> = app
-            .wrap()
-            .query_wasm_smart(&addr, &QueryMsg::Auctions { start_after: None } )
-            .unwrap();
-
-        assert_eq!(resp.len(), 10);
-
-        let resp: Vec<(u64, Auction)> = app
-            .wrap()
-            .query_wasm_smart(&addr, &QueryMsg::Auctions { start_after: Some(resp[8].0) } )
-            .unwrap();
-
-        assert_eq!(resp.len(), 7);
+        Ok(result)
     }
+
 }

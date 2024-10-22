@@ -48,7 +48,7 @@ pub struct Auction {
     pub current_state: AuctionStatus,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone)]
+#[derive(PartialEq, Serialize, Deserialize, JsonSchema, Debug, Clone)]
 pub struct BidItem {
     pub name: String,
     pub total_bids: Uint64,
