@@ -43,12 +43,6 @@ pub struct BidItemsByIdResp {
     pub bid_state: AuctionStatus,
 }
 
-// #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
-// pub struct Market {
-//     pub key: Key,
-//     pub data: MarketData,
-// }
-
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
