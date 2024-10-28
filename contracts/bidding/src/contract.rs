@@ -206,7 +206,7 @@ mod exec {
                     AuctionStatus::Completed => {
                         Response::new()
                             .add_attribute("action", "set_auction_state")
-                            .add_attribute("response", "Auction is already in completed state.")
+                            .add_attribute("response", "Only the crank can set an auction to a complete state.")
                     },
                 }
             },
@@ -222,6 +222,11 @@ mod exec {
                         .add_attribute("action", "set_auction_state")
                         .add_attribute("response", "Auction has been transitioned to the desired state.")
                         .add_attribute("auctions_crank_queue_count", auctions_crank_queue_count.to_string())
+                }
+                else if auction_status == AuctionStatus::Completed {
+                    Response::new()
+                        .add_attribute("action", "set_auction_state")
+                        .add_attribute("response", "Only the crank can set an auction to a complete state.")
                 }
                 else {
                     Response::new()
@@ -366,8 +371,13 @@ mod exec {
         // Removing Auctions from Crank queue
         for auction_completed in auctions_completed {
             AUCTIONS_CRANK_QUEUE.remove(deps.storage, auction_completed);
+
+            // Update Auction status as Complete
+            let mut auction = AUCTIONS.load(deps.storage, auction_completed)?;
+            auction.current_state = AuctionStatus::Completed;
+            AUCTIONS.save(deps.storage, auction_completed, &auction)?;
         }
-        
+
         let response = Response::new()
                     .add_attribute("action", "advance_crank")
                     .add_attribute("response", "Successfully advanced crank.");
