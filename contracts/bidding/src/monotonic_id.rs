@@ -27,7 +27,7 @@ macro_rules! impl_monotonic_id {
             }
 
             #[allow(dead_code)]
-            fn next(storage: &mut dyn cosmwasm_std::Storage) -> cosmwasm_std::StdResult<Self> {
+            pub fn next(storage: &mut dyn cosmwasm_std::Storage) -> cosmwasm_std::StdResult<Self> {
                 let id = Self::COUNTER.load(storage).unwrap_or_default();
                 Self::COUNTER.save(storage, &(id + 1))?;
 

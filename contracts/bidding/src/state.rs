@@ -1,7 +1,7 @@
 use std::mem;
 
 use cosmwasm_std::{Addr, StdError, StdResult, Timestamp, Uint64};
-use cw_storage_plus::{IntKey, Item, Key, KeyDeserialize, Map, Prefixer, PrimaryKey};
+use cw_storage_plus::{IntKey, Item, Key, KeyDeserialize, Map, PrimaryKey};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -15,8 +15,10 @@ pub const ADMIN: Item<Addr> = Item::new("admin");
 pub const ADMINS: Map<&Addr, Timestamp> = Map::new("admins");
 pub const AUCTIONS: Map<AuctionId, Auction> = Map::new("auctions");
 pub const BID_ITEMS: Map<BidItemKey, BidItem> = Map::new("bid_items");
+pub const BID_ITEMS_TO_AUCTIONS: Map<BidItemId, AuctionId> = Map::new("bid_items_to_auctions");
 pub const BIDS: Map<BidKey, Bid> = Map::new("bids");
-pub const AUCTIONS_CRANK_QUEUE: Item<Vec<u64>> = Item::new("auctions_crank_queue");
+pub const AUCTIONS_CRANK_QUEUE: Map<AuctionId, ()> = Map::new("auctions_crank_queue");
+pub const WINNING_BIDS: Map<BidItemId, BidKey> = Map::new("winning_bids");
 
 #[derive(PartialEq, Clone, Copy, Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -49,7 +51,6 @@ pub struct BidItem {
     pub total_bids: Uint64,
     pub total_coins: u128,
     pub winner: Option<Addr>,
-    pub auction_id: u64,
     pub current_state: BidItemStatus,
 }
 
@@ -58,7 +59,6 @@ pub struct Bid {
     pub amount: u128,
     pub bidder: Addr,
     pub placed: Timestamp,
-    pub bid_item_id: u64,
 }
 
 ///////////////////////////
@@ -80,40 +80,6 @@ impl_monotonic_id!(
     "Id that represents an auction."
 );
 
-// #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default, Debug)]
-// pub struct AuctionId(pub u32);
-
-// impl<'a> PrimaryKey<'a> for AuctionId {
-//     type Prefix = ();
-//     type SubPrefix = ();
-//     type Suffix = u64;
-//     type SuperSuffix = u64;
-
-//     #[inline]
-//     fn key(&self) -> Vec<Key> {
-//         vec![Key::Val32(self.0.to_cw_bytes())]
-//     }
-// }
-
-// impl<'a> Prefixer<'a> for AuctionId {
-//     fn prefix(&self) -> Vec<Key> {
-//         vec![Key::Val32(self.0.to_cw_bytes())]
-//     }
-// }
-
-// impl KeyDeserialize for AuctionId {
-//     type Output = Self;
-//     const KEY_ELEMS: u16 = 1;
-
-//     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
-//         Self::from_slice(value.as_slice())
-//     }
-
-//     fn from_slice(value: &[u8]) -> StdResult<Self::Output> {
-//         Ok(Self(u32::from_cw_bytes(slice_to_array(value)?)))
-//     }
-// }
-
 /////// Bid Item ID ///////
 
 impl_monotonic_id!(
@@ -122,40 +88,6 @@ impl_monotonic_id!(
     "Id that represents an auction."
 );
 
-// #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default, Debug)]
-// pub struct BidItemId(pub u32);
-
-// impl<'a> PrimaryKey<'a> for BidItemId {
-//     type Prefix = ();
-//     type SubPrefix = ();
-//     type Suffix = u64;
-//     type SuperSuffix = u64;
-
-//     #[inline]
-//     fn key(&self) -> Vec<Key> {
-//         vec![Key::Val32(self.0.to_cw_bytes())]
-//     }
-// }
-
-// impl<'a> Prefixer<'a> for BidItemId {
-//     fn prefix(&self) -> Vec<Key> {
-//         vec![Key::Val32(self.0.to_cw_bytes())]
-//     }
-// }
-
-// impl KeyDeserialize for BidItemId {
-//     type Output = Self;
-//     const KEY_ELEMS: u16 = 1;
-
-//     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
-//         Self::from_slice(value.as_slice())
-//     }
-
-//     fn from_slice(value: &[u8]) -> StdResult<Self::Output> {
-//         Ok(Self(u32::from_cw_bytes(slice_to_array(value)?)))
-//     }
-// }
-
 /////// Bid ID ///////
 
 impl_monotonic_id!(
@@ -163,40 +95,6 @@ impl_monotonic_id!(
     "auction_id",
     "Id that represents an auction."
 );
-
-// #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default, Debug)]
-// pub struct BidId(pub u32);
-
-// impl<'a> PrimaryKey<'a> for BidId {
-//     type Prefix = ();
-//     type SubPrefix = ();
-//     type Suffix = u64;
-//     type SuperSuffix = u64;
-
-//     #[inline]
-//     fn key(&self) -> Vec<Key> {
-//         vec![Key::Val32(self.0.to_cw_bytes())]
-//     }
-// }
-
-// impl<'a> Prefixer<'a> for BidId {
-//     fn prefix(&self) -> Vec<Key> {
-//         vec![Key::Val32(self.0.to_cw_bytes())]
-//     }
-// }
-
-// impl KeyDeserialize for BidId {
-//     type Output = Self;
-//     const KEY_ELEMS: u16 = 1;
-
-//     fn from_vec(value: Vec<u8>) -> StdResult<Self::Output> {
-//         Self::from_slice(value.as_slice())
-//     }
-
-//     fn from_slice(value: &[u8]) -> StdResult<Self::Output> {
-//         Ok(Self(u32::from_cw_bytes(slice_to_array(value)?)))
-//     }
-// }
 
 /////// Bid Item Key ///////
 

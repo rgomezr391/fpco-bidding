@@ -1,6 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
-use crate::state::{Auction, AuctionStatus, BidItem};
+use crate::state::{Auction, AuctionId, AuctionStatus, BidItem, BidItemId, BidItemKey};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -16,15 +16,15 @@ pub enum ExecuteMsg {
         bid_items: Vec<String>,
     },
     SetAuctionState {
-        id: u64,
+        id: AuctionId,
         status: AuctionStatus,
     },
     AddBidItems {
-        auction_id: u64,
+        auction_id: AuctionId,
         bid_items: Vec<String>,
     },
     PlaceBid {
-        bid_item_id: u64,
+        bid_item_id: BidItemId,
         coins_to_bid: u128,
     },
     AdvanceCrank {},
@@ -43,6 +43,12 @@ pub struct BidItemsByIdResp {
     pub bid_state: AuctionStatus,
 }
 
+// #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
+// pub struct Market {
+//     pub key: Key,
+//     pub data: MarketData,
+// }
+
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
@@ -50,26 +56,26 @@ pub enum QueryMsg {
     Admin {},
     #[returns(Auction)]
     Auction {
-        id: u64
+        id: AuctionId
     },
-    #[returns(Vec<(u64, BidItem)>)]
+    #[returns(Vec<(BidItemId, BidItem)>)]
     BidItemsByAuctionId {
-        auction_id: u64
+        auction_id: AuctionId
     },
     #[returns(BidItem)]
     BidItem {
-        id: u64
+        id: BidItemId
     },
-    #[returns(Vec<(u64, BidItem)>)]
+    #[returns(Vec<(BidItemKey, BidItem)>)]
     BidItems {
-        start_after: Option<u64>,
+        start_after: Option<BidItemKey>,
     },
-    #[returns(Vec<(u64, Auction)>)]
+    #[returns(Vec<(AuctionId, Auction)>)]
     Auctions {
-        start_after: Option<u64>,
+        start_after: Option<AuctionId>,
     },
-    #[returns(Vec<BidItemsByIdResp>)]
+    #[returns(Vec<(BidItemId, BidItem)>)]
     BidItemsById {
-        bid_items_ids: Vec<u64>,
+        bid_items_ids: Vec<BidItemId>,
     }
 }
