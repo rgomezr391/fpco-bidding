@@ -17,4 +17,10 @@ pub enum ContractError {
     AuctionNonUpdateable,
     #[error("The auction is already completed and can't accept bids.")]
     AuctionCompleted,
+    #[error("{msg}")]
+    AuctionInvalidStateUpdate { msg: String },
+    #[error("Expecting to receive {denom}.")]
+    NoFundsReceived{ denom: String },
+    #[error("{msg}.")]
+    UnexpectedAssetsReceived{ msg: String },
 }

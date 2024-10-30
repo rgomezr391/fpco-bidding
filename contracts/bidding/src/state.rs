@@ -1,6 +1,6 @@
 use std::mem;
 
-use cosmwasm_std::{Addr, StdError, StdResult, Timestamp, Uint64};
+use cosmwasm_std::{Addr, StdError, StdResult, Timestamp, Uint128, Uint64};
 use cw_storage_plus::{IntKey, Item, Key, KeyDeserialize, Map, PrimaryKey};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ pub const BID_ITEMS: Map<BidItemKey, BidItem> = Map::new("bid_items");
 pub const BID_ITEMS_TO_AUCTIONS: Map<BidItemId, AuctionId> = Map::new("bid_items_to_auctions");
 pub const BIDS: Map<BidKey, Bid> = Map::new("bids");
 pub const AUCTIONS_CRANK_QUEUE: Map<AuctionId, ()> = Map::new("auctions_crank_queue");
+pub const AUCTIONS_CRANK_QUEUE_COUNT: Item<u64> = Item::new("auctions_crank_queue_count");
 pub const WINNING_BIDS: Map<BidItemId, BidKey> = Map::new("winning_bids");
 
 #[derive(PartialEq, Clone, Copy, Serialize, Deserialize, JsonSchema, Debug)]
@@ -41,7 +42,7 @@ pub struct Auction {
     pub name: String,
     pub available_bid_items: Uint64,
     pub total_bids: Uint64,
-    pub total_coins: u128,
+    pub total_coins: Uint128,
     pub current_state: AuctionStatus,
 }
 
@@ -49,14 +50,14 @@ pub struct Auction {
 pub struct BidItem {
     pub name: String,
     pub total_bids: Uint64,
-    pub total_coins: u128,
+    pub total_coins: Uint128,
     pub winner: Option<Addr>,
     pub current_state: BidItemStatus,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 pub struct Bid {
-    pub amount: u128,
+    pub amount: Uint128,
     pub bidder: Addr,
     pub placed: Timestamp,
 }

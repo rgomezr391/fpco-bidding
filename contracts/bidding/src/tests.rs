@@ -1,9 +1,12 @@
+const _INITIAL_BALANCE: u128 = 200_000;
+const _DENOM: &str = "eth";
+
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::Addr;
+    use cosmwasm_std::{coins, Addr, Coin};
     use cw_multi_test::{App, ContractWrapper, Executor};
 
-    use crate::{msg::{ExecuteMsg, InstantiateMsg, QueryMsg}, state::{Auction, AuctionId, AuctionStatus, BidItem, BidItemId, BidItemKey}};
+    use crate::{msg::{ExecuteMsg, InstantiateMsg, QueryMsg}, state::{Auction, AuctionId, AuctionStatus, BidItem, BidItemId, BidItemKey}, tests::{_DENOM, _INITIAL_BALANCE}};
     use crate::contract::{execute, instantiate, query};
 
     #[test]
@@ -176,6 +179,18 @@ mod tests {
             )
             .unwrap();
 
+        // Initialize balance for "user"
+        app.init_modules(|router, _, storage| {
+            router
+                .bank
+                .init_balance(
+                    storage,
+                    &Addr::unchecked("user"),
+                    vec![Coin::new(_INITIAL_BALANCE, _DENOM)],
+                )
+                .unwrap();
+        });
+
         let bid_items= vec![ 
             "TA1 1st bid item".to_string(),
             "TA1 2nd bid item".to_string(),
@@ -228,16 +243,16 @@ mod tests {
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 4 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(4, "eth"),
                 )
                 .unwrap();
 
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 1 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(1, "eth"),
                 )
                 .unwrap();
             } 
@@ -245,24 +260,24 @@ mod tests {
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 8 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(8, "eth"),
                 )
                 .unwrap();
 
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 10 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(10, "eth"),
                 )
                 .unwrap();
 
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 16 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(16, "eth"),
                 )
                 .unwrap();
             }
@@ -270,24 +285,24 @@ mod tests {
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 36 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(36, "eth"),
                 )
                 .unwrap();
 
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 35 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(35, "eth"),
                 )
                 .unwrap();
 
                 app.execute_contract(
                     Addr::unchecked("user"),
                     addr.clone(),
-                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0, coins_to_bid: 5 },
-                    &[],
+                    &ExecuteMsg::PlaceBid { bid_item_id: bid_item.0 },
+                    &coins(5, "eth"),
                 )
                 .unwrap();
             };

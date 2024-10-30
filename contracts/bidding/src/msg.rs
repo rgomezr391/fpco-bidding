@@ -25,7 +25,6 @@ pub enum ExecuteMsg {
     },
     PlaceBid {
         bid_item_id: BidItemId,
-        coins_to_bid: u128,
     },
     AdvanceCrank {},
 }

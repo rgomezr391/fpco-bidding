@@ -3,7 +3,7 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{ADMIN, AUCTIONS, AUCTIONS_CRANK_QUEUE};
 use cosmwasm_std::{
     coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response,
-    StdResult,
+    StdResult, Uint128,
 };
 
 pub type Result<T> = std::result::Result<T, ContractError>;
@@ -89,16 +89,20 @@ pub fn execute(
         } => exec::add_bid_items(deps, info, auction_id, bid_items).map_err(Into::into),
         PlaceBid {
             bid_item_id,
-            coins_to_bid,
-        } => exec::place_bid(deps, info, env, bid_item_id, coins_to_bid).map_err(Into::into),
+        } => {
+            let coins_to_bid = assert_sent_amount(&info)?;
+            exec::place_bid(deps, info, env, bid_item_id, coins_to_bid).map_err(Into::into)
+        },
         AdvanceCrank {} => exec::advance_crank(deps, info, env).map_err(Into::into),
     }
 }
 
 mod exec {
-    use cosmwasm_std::Uint64;
+    use std::vec;
 
-    use crate::state::{Auction, AuctionId, AuctionStatus, Bid, BidId, BidItem, BidItemId, BidItemKey, BidItemStatus, BidKey, BIDS, BID_ITEMS, BID_ITEMS_TO_AUCTIONS, WINNING_BIDS};
+    use cosmwasm_std::{Uint128, Uint64};
+
+    use crate::state::{Auction, AuctionId, AuctionStatus, Bid, BidId, BidItem, BidItemId, BidItemKey, BidItemStatus, BidKey, AUCTIONS_CRANK_QUEUE_COUNT, BIDS, BID_ITEMS, BID_ITEMS_TO_AUCTIONS, WINNING_BIDS};
 
     use super::*;
 
@@ -114,7 +118,7 @@ mod exec {
         let auction = Auction {
             name: name,
             total_bids: Uint64::from(0 as u64),
-            total_coins: 0,
+            total_coins: Uint128::from(0 as u128),
             available_bid_items: Uint64::from(bid_items.len() as u64),
             current_state: AuctionStatus::Active,
         };
@@ -123,11 +127,10 @@ mod exec {
 
         add_bid_items_to_auction(bid_items, auction_id, deps)?;
 
-        let resp = Response::new()
-            .add_attribute("action", "create_auction")
-            .add_attribute("auction_id", auction_id.to_string());
+        let attributes = Some(vec![("auction_id".to_string(), auction_id.to_string())]);
+        let response = response("create_auction", "Successfully created auction.", attributes);
 
-        Ok(resp)
+        Ok(response)
     }
 
     fn add_bid_items_to_auction(bid_items: Vec<String>, auction_id: AuctionId, deps: DepsMut<'_>) -> Result<()> {
@@ -143,7 +146,7 @@ mod exec {
             let item = BidItem {
                 name: bid_item,
                 total_bids: Uint64::from(0 as u64),
-                total_coins: 0,
+                total_coins: Uint128::from(0 as u128),
                 winner: None,
                 current_state: BidItemStatus::Active
             };
@@ -168,14 +171,10 @@ mod exec {
 
         let response = match auction.current_state {
             AuctionStatus::PendingCompletion => {
-                Response::new()
-                .add_attribute("action", "set_auction_state")
-                .add_attribute("response", "Can't revert an auction that's already in pending completion")
+                return Err(ContractError::AuctionInvalidStateUpdate { msg: "Can't revert an auction that's already in pending completion.".to_string() });
             },
             AuctionStatus::Completed => {
-                Response::new()
-                .add_attribute("action", "set_auction_state")
-                .add_attribute("response", "Can't revert an auction that's already completed.")
+                return Err(ContractError::AuctionInvalidStateUpdate { msg: "Can't revert an auction that's already completed.".to_string() });
             },
             AuctionStatus::Suspended =>  {
                 match auction_status {
@@ -185,28 +184,24 @@ mod exec {
 
                         if auction_status == AuctionStatus::PendingCompletion {
                             AUCTIONS_CRANK_QUEUE.save(deps.storage, id, &())?;
-                            let auctions_crank_queue_count = AUCTIONS_CRANK_QUEUE.range(deps.storage, None, None, Order::Ascending).count();
+                            let mut count = AUCTIONS_CRANK_QUEUE_COUNT.load(deps.storage).unwrap_or(0);
+                            count += 1;
 
-                            Response::new()
-                            .add_attribute("action", "set_auction_state")
-                            .add_attribute("response", "Auction has been transitioned to the desired state.")
-                            .add_attribute("auctions_crank_queue_count", auctions_crank_queue_count.to_string())
+                            AUCTIONS_CRANK_QUEUE_COUNT.save(deps.storage, &count)?;
+
+                            let attributes = Some(vec![("auctions_crank_queue_count".to_string(), count.to_string())]);
+                            response("set_auction_state", "Auction has been transitioned to the desired state.", attributes)
+
                         }
                         else {
-                            Response::new()
-                            .add_attribute("action", "set_auction_state")
-                            .add_attribute("response", "Auction has been transitioned to the desired state.")
+                            response("set_auction_state", "Auction has been transitioned to the desired state.", None)
                         }
                     },
                     AuctionStatus::Suspended => {
-                        Response::new()
-                            .add_attribute("action", "set_auction_state")
-                            .add_attribute("response", "Auction is already in suspended state.")
+                        return Err(ContractError::AuctionInvalidStateUpdate { msg: "Auction is already in suspended state.".to_string() });
                     },
                     AuctionStatus::Completed => {
-                        Response::new()
-                            .add_attribute("action", "set_auction_state")
-                            .add_attribute("response", "Only the crank can set an auction to a complete state.")
+                        return Err(ContractError::AuctionInvalidStateUpdate { msg: "Only the crank can set an auction to a complete state.".to_string() });
                     },
                 }
             },
@@ -216,29 +211,43 @@ mod exec {
 
                 if auction_status == AuctionStatus::PendingCompletion {
                     AUCTIONS_CRANK_QUEUE.save(deps.storage, id, &())?;
-                    let auctions_crank_queue_count = AUCTIONS_CRANK_QUEUE.range(deps.storage, None, None, Order::Ascending).count();
+                    let mut count = AUCTIONS_CRANK_QUEUE_COUNT.load(deps.storage).unwrap_or(0);
+                    count += 1;
 
-                    Response::new()
-                        .add_attribute("action", "set_auction_state")
-                        .add_attribute("response", "Auction has been transitioned to the desired state.")
-                        .add_attribute("auctions_crank_queue_count", auctions_crank_queue_count.to_string())
+                    AUCTIONS_CRANK_QUEUE_COUNT.save(deps.storage, &count)?;
+
+                    let attributes = Some(vec![("auctions_crank_queue_count".to_string(), count.to_string())]);
+                    response("set_auction_state", "Auction has been transitioned to the desired state.", attributes)
                 }
                 else if auction_status == AuctionStatus::Completed {
-                    Response::new()
-                        .add_attribute("action", "set_auction_state")
-                        .add_attribute("response", "Only the crank can set an auction to a complete state.")
+                    return Err(ContractError::AuctionInvalidStateUpdate { msg: "Only the crank can set an auction to a complete state.".to_string() });
                 }
                 else {
-                    Response::new()
-                        .add_attribute("action", "set_auction_state")
-                        .add_attribute("response", "Auction has been transitioned to the desired state.")
+                    response("set_auction_state", "Auction has been transitioned to the desired state.", None)
                 }
             },
         };
 
         Ok(response)
     }
+    
+    fn response(action: &str, msg: &str, attributes: Option<Vec<(String, String)>>) -> Response {
+        let mut response = Response::new()
+            .add_attribute("action", action)
+            .add_attribute("response", msg);
 
+        match attributes {
+            Some(attributes) => {
+                for attribute in attributes {
+                    response = response.add_attribute(attribute.0, attribute.1);
+                }
+            },
+            None => {},
+        }
+
+        response
+    }
+    
     pub fn add_bid_items(deps: DepsMut, info: MessageInfo, auction_id: AuctionId, bid_items: Vec<String>) -> Result<Response> {
         let curr_admin: Addr = ADMIN.load(deps.storage)?;
 
@@ -260,14 +269,12 @@ mod exec {
 
         add_bid_items_to_auction(bid_items, auction_id, deps)?;
 
-        let response = Response::new()
-                    .add_attribute("action", "add_bid_items")
-                    .add_attribute("response", "Successfully added bid items to auction.");
+        let response = response("add_bid_items", "Successfully added bid items to auction.", None);
 
         Ok(response)
     }
 
-    pub fn place_bid(deps: DepsMut, info: MessageInfo, env: Env, bid_item_id: BidItemId, coins_to_bid: u128) -> Result<Response> {
+    pub fn place_bid(deps: DepsMut, info: MessageInfo, env: Env, bid_item_id: BidItemId, coins_to_bid: Uint128) -> Result<Response> {
 
         let auction_id = BID_ITEMS_TO_AUCTIONS
             .may_load(deps.storage, bid_item_id)?
@@ -298,9 +305,7 @@ mod exec {
 
         check_winning_bid(deps, bid_item_id, item, key)?;
 
-        let response = Response::new()
-                    .add_attribute("action", "place_bid")
-                    .add_attribute("response", "Successfully placed bid.");
+        let response: Response = response("place_bid", "Successfully placed bid.", None);
 
         Ok(response)
     }
@@ -310,7 +315,7 @@ mod exec {
             Some(bid) => {  // There's an existing winning bid.
                 let current_winning_bid = BIDS.load(deps.storage, bid)?;
     
-                if item.amount > current_winning_bid.amount || (item.amount == current_winning_bid.amount && item.placed > current_winning_bid.placed) {
+                if item.amount > current_winning_bid.amount {
                     WINNING_BIDS.save(deps.storage, bid_item_id, &key)?;
                 }
             }
@@ -371,6 +376,12 @@ mod exec {
         // Removing Auctions from Crank queue
         for auction_completed in auctions_completed {
             AUCTIONS_CRANK_QUEUE.remove(deps.storage, auction_completed);
+            let mut count = AUCTIONS_CRANK_QUEUE_COUNT.load(deps.storage).unwrap_or(0);
+            if count > 0 {
+                count -= 1;
+            }
+
+            AUCTIONS_CRANK_QUEUE_COUNT.save(deps.storage, &count)?;
 
             // Update Auction status as Complete
             let mut auction = AUCTIONS.load(deps.storage, auction_completed)?;
@@ -378,9 +389,7 @@ mod exec {
             AUCTIONS.save(deps.storage, auction_completed, &auction)?;
         }
 
-        let response = Response::new()
-                    .add_attribute("action", "advance_crank")
-                    .add_attribute("response", "Successfully advanced crank.");
+        let response = response("place_bid", "Successfully advanced crank.", None);
                 
         Ok(response)
     }
@@ -435,13 +444,12 @@ mod exec {
         let _ = bids.into_iter().map(|bid|
             BankMsg::Send {
                 to_address: if bid.0 != winning_bid_id { bid.1.bidder.to_string() } else { curr_admin_str.clone() },
-                amount: coins(bid.1.amount, DENOM)
+                amount: coins(bid.1.amount.into(), DENOM)
             }
         );
 
         Ok(())
     }
-
 }
 
 mod query {
@@ -539,4 +547,37 @@ mod query {
         Ok(results)
     }
 
+}
+
+fn assert_sent_amount(info: &MessageInfo) -> Result<Uint128> {
+    let Some(amount) = get_sent_amount(info)? else {
+        return Err(ContractError::NoFundsReceived { denom: DENOM.to_string() });
+    };
+
+    Ok(amount)
+}
+
+fn get_sent_amount(info: &MessageInfo) -> Result<Option<Uint128>> {
+    if info.funds.is_empty() {
+        return Ok(None);
+    }
+    
+    if info.funds.len() != 1 {
+        return Err(ContractError::UnexpectedAssetsReceived { msg: format!(
+            "Expecting to receive only {}, but got {} assets.",
+            DENOM.to_string(),
+            info.funds.len()) 
+        });
+    }
+
+    let coin = &info.funds[0];
+
+    if coin.denom != DENOM.to_string() {
+        return Err(ContractError::UnexpectedAssetsReceived { msg: format!(
+            "Expecting denom: {}, found: {}",
+            DENOM.to_string(), coin.denom) 
+        });
+    }
+
+    Ok(Some(coin.amount))
 }
